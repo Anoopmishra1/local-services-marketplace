@@ -86,6 +86,9 @@ router.get('/provider/list', authMiddleware, requireRole('provider'), async (req
             .eq('user_id', req.user.id)
             .single();
 
+        // Provider profile not set up yet — return empty list
+        if (!provider) return res.json([]);
+
         let query = supabase
             .from('bookings')
             .select(`*, customer:users!bookings_customer_id_fkey(name, avatar_url, phone), categories(name)`)
@@ -98,11 +101,12 @@ router.get('/provider/list', authMiddleware, requireRole('provider'), async (req
 
         const { data, error } = await query;
         if (error) throw error;
-        res.json(data);
+        res.json(data || []);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
+
 
 // ── PUT /api/bookings/:id/status ──────────────────────────────
 // Provider accepts or rejects; updates in_progress/completed by either party

@@ -66,11 +66,15 @@ router.post(
             const { data, error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) return res.status(401).json({ error: 'Invalid credentials' });
 
-            const { data: user } = await supabase
+            const { data: user, error: userError } = await supabase
                 .from('users')
                 .select('*')
                 .eq('id', data.user.id)
                 .single();
+
+            if (userError || !user) {
+                return res.status(404).json({ error: 'User profile not found. Please sign up again.' });
+            }
 
             const token = generateToken(user);
             res.json({ user, token });

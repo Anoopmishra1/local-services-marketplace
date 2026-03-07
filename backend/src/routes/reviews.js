@@ -61,10 +61,10 @@ router.get('/provider/:id', async (req, res) => {
             .eq('provider_id', req.params.id)
             .order('created_at', { ascending: false })
             .range(from, from + parseInt(limit) - 1);
-        if (error) throw error;
-        res.json(data);
+        if (error) return res.json([]); // graceful if table missing
+        res.json(data || []);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.json([]); // never crash the provider detail screen
     }
 });
 

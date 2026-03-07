@@ -9,7 +9,8 @@ import { useAuthStore } from '../../store/authStore';
 const HOURS = [1, 2, 3, 4];
 
 export default function BookServiceScreen({ route, navigation }) {
-    const { provider, providerId } = route.params;
+    const { provider, providerId: paramProviderId } = route.params;
+    const providerId = paramProviderId || provider?.id;
     const { user } = useAuthStore();
 
     const [form, setForm] = useState({

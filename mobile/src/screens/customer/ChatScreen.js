@@ -3,6 +3,7 @@ import {
     View, Text, FlatList, TextInput, TouchableOpacity,
     StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import api from '../../services/api';
 import { getSocket, connectSocket } from '../../services/socket';
 import { useAuthStore } from '../../store/authStore';
@@ -116,7 +117,7 @@ export default function ChatScreen({ route }) {
                     multiline
                 />
                 <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
-                    <Text style={styles.sendIcon}>➤</Text>
+                    <Icon name="send" size={20} color="#fff" />
                 </TouchableOpacity>
             </View>
         </KeyboardAvoidingView>

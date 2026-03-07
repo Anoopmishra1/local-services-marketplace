@@ -1,18 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity,
-    StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+    StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView,
+    Platform, Animated,
 } from 'react-native';
 import { useAuthStore } from '../../store/authStore';
 import api from '../../services/api';
 
 export default function LoginScreen({ navigation }) {
-    const [tab, setTab] = useState('email'); // 'email' | 'otp'
+    const [tab, setTab] = useState('email');
     const [email, setEmail] = useState('');
     const [password, setPass] = useState('');
     const [phone, setPhone] = useState('');
     const [loading, setLoading] = useState(false);
     const loginWithEmail = useAuthStore((s) => s.loginWithEmail);
+
+    // Animation values
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(40)).current;
+    const btnScale = useRef(new Animated.Value(1)).current;
+    const tabSlide = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+        ]).start();
+    }, []);
+
+    const switchTab = (t) => {
+        Animated.sequence([
+            Animated.timing(fadeAnim, { toValue: 0.3, duration: 100, useNativeDriver: true }),
+            Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+        ]).start();
+        setTab(t);
+    };
+
+    const onPressIn = () => Animated.spring(btnScale, { toValue: 0.95, useNativeDriver: true }).start();
+    const onPressOut = () => Animated.spring(btnScale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
 
     const handleEmailLogin = async () => {
         if (!email || !password) return Alert.alert('Error', 'Fill all fields');
@@ -41,46 +66,64 @@ export default function LoginScreen({ navigation }) {
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-            <Text style={styles.title}>Welcome Back 👋</Text>
-            <Text style={styles.subtitle}>Book local services in minutes</Text>
+            <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+                <Text style={styles.title}>Welcome Back 👋</Text>
+                <Text style={styles.subtitle}>Book local services in minutes</Text>
 
-            {/* Tab Switcher */}
-            <View style={styles.tabRow}>
-                {['email', 'otp'].map((t) => (
-                    <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.activeTab]} onPress={() => setTab(t)}>
-                        <Text style={[styles.tabText, tab === t && styles.activeTabText]}>
-                            {t === 'email' ? 'Email' : 'OTP'}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
+                {/* Tab Switcher */}
+                <View style={styles.tabRow}>
+                    {['email', 'otp'].map((t) => (
+                        <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.activeTab]} onPress={() => switchTab(t)}>
+                            <Text style={[styles.tabText, tab === t && styles.activeTabText]}>
+                                {t === 'email' ? 'Email' : 'OTP'}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
 
-            {tab === 'email' ? (
-                <>
-                    <TextInput style={styles.input} placeholder="Email" value={email}
-                        onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-                    <TextInput style={styles.input} placeholder="Password" value={password}
-                        onChangeText={setPass} secureTextEntry />
-                    <TouchableOpacity style={styles.btn} onPress={handleEmailLogin} disabled={loading}>
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Login</Text>}
-                    </TouchableOpacity>
-                </>
-            ) : (
-                <>
-                    <View style={styles.phoneRow}>
-                        <Text style={styles.code}>+91</Text>
-                        <TextInput style={[styles.input, { flex: 1 }]} placeholder="Mobile number"
-                            value={phone} onChangeText={setPhone} keyboardType="number-pad" maxLength={10} />
-                    </View>
-                    <TouchableOpacity style={styles.btn} onPress={handleSendOTP} disabled={loading}>
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Send OTP</Text>}
-                    </TouchableOpacity>
-                </>
-            )}
+                {tab === 'email' ? (
+                    <>
+                        <TextInput style={styles.input} placeholder="Email" value={email}
+                            onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+                        <TextInput style={styles.input} placeholder="Password" value={password}
+                            onChangeText={setPass} secureTextEntry />
+                        <Animated.View style={{ transform: [{ scale: btnScale }] }}>
+                            <TouchableOpacity
+                                style={styles.btn}
+                                onPress={handleEmailLogin}
+                                onPressIn={onPressIn}
+                                onPressOut={onPressOut}
+                                disabled={loading}
+                            >
+                                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Login</Text>}
+                            </TouchableOpacity>
+                        </Animated.View>
+                    </>
+                ) : (
+                    <>
+                        <View style={styles.phoneRow}>
+                            <Text style={styles.code}>+91</Text>
+                            <TextInput style={[styles.input, { flex: 1 }]} placeholder="Mobile number"
+                                value={phone} onChangeText={setPhone} keyboardType="number-pad" maxLength={10} />
+                        </View>
+                        <Animated.View style={{ transform: [{ scale: btnScale }] }}>
+                            <TouchableOpacity
+                                style={styles.btn}
+                                onPress={handleSendOTP}
+                                onPressIn={onPressIn}
+                                onPressOut={onPressOut}
+                                disabled={loading}
+                            >
+                                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Send OTP</Text>}
+                            </TouchableOpacity>
+                        </Animated.View>
+                    </>
+                )}
 
-            <TouchableOpacity onPress={() => navigation.navigate('Register')} style={{ marginTop: 20 }}>
-                <Text style={styles.link}>Don't have an account? <Text style={{ color: '#6C63FF' }}>Register</Text></Text>
-            </TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.navigate('Register')} style={{ marginTop: 20 }}>
+                    <Text style={styles.link}>Don't have an account? <Text style={{ color: '#6C63FF' }}>Register</Text></Text>
+                </TouchableOpacity>
+            </Animated.View>
         </KeyboardAvoidingView>
     );
 }

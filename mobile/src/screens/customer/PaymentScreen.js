@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View, Text, StyleSheet, ActivityIndicator,
-    TouchableOpacity, Alert, ScrollView,
+    TouchableOpacity, Alert, ScrollView, Linking,
+    TextInput, Animated,
 } from 'react-native';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
-
-// Try importing Razorpay — may not be installed
-let RazorpayCheckout = null;
-try { RazorpayCheckout = require('react-native-razorpay').default; } catch (e) { /* COD only */ }
 
 export default function PaymentScreen({ route, navigation }) {
     const { bookingId } = route.params;
@@ -16,28 +13,45 @@ export default function PaymentScreen({ route, navigation }) {
     const [booking, setBooking] = useState(null);
     const [loading, setLoading] = useState(true);
     const [paying, setPaying] = useState(false);
-    const [method, setMethod] = useState('cod'); // 'cod' or 'online'
+    const [method, setMethod] = useState('upi'); // 'upi' or 'cod'
+    const [transactionRef, setTransactionRef] = useState('');
+    const [upiStep, setUpiStep] = useState('idle'); // idle | opened | confirming
+
+    // Animations
+    const cardFade = useRef(new Animated.Value(0)).current;
+    const cardSlide = useRef(new Animated.Value(30)).current;
 
     useEffect(() => {
         api.get(`/bookings/${bookingId}`).then(({ data }) => {
             setBooking(data);
-        }).finally(() => setLoading(false));
+        }).finally(() => {
+            setLoading(false);
+            Animated.parallel([
+                Animated.timing(cardFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+                Animated.timing(cardSlide, { toValue: 0, duration: 450, useNativeDriver: true }),
+            ]).start();
+        });
     }, [bookingId]);
 
-    // ── Cash on Delivery ─────────────────────────────────────
-    const handleCOD = async () => {
+    // ── UPI Payment ───────────────────────────────────────────
+    const handleUPI = async () => {
         setPaying(true);
         try {
-            await api.post('/payments/cod', { booking_id: bookingId });
-            Alert.alert('Booking Confirmed! 🎉', 'Pay cash to the provider when they arrive.', [
-                {
-                    text: 'Chat with Provider',
-                    onPress: () => navigation.replace('Chat', {
-                        bookingId,
-                        receiverId: booking?.provider?.user_id,
-                    }),
-                },
-            ]);
+            const { data } = await api.post('/payments/upi/initiate', { booking_id: bookingId });
+
+            // Try to open UPI deep link
+            const supported = await Linking.canOpenURL(data.upi_link);
+            if (supported) {
+                await Linking.openURL(data.upi_link);
+                setUpiStep('opened');
+            } else {
+                // Fallback: show UPI ID manually
+                Alert.alert(
+                    'Open UPI App Manually',
+                    `Pay ₹${data.amount} to:\n\nUPI ID: ${data.upi_id}\nName: ${data.provider_name}`,
+                    [{ text: 'Done', onPress: () => setUpiStep('opened') }]
+                );
+            }
         } catch (err) {
             Alert.alert('Error', err.response?.data?.error || err.message);
         } finally {
@@ -45,45 +59,49 @@ export default function PaymentScreen({ route, navigation }) {
         }
     };
 
-    // ── Razorpay Online Payment ──────────────────────────────
-    const handleOnlinePay = async () => {
-        if (!RazorpayCheckout) {
-            return Alert.alert('Not Available', 'Online payment module is not installed. Use Cash on Delivery.');
+    // ── Confirm UPI Payment done ──────────────────────────────
+    const handleConfirmUPI = async () => {
+        setUpiStep('confirming');
+        try {
+            await api.post('/payments/upi/confirm', {
+                booking_id: bookingId,
+                transaction_ref: transactionRef.trim() || undefined,
+            });
+            Alert.alert(
+                'Payment Confirmed! ✅',
+                'The provider has been notified. They will verify and proceed with the service.',
+                [{
+                    text: 'Chat with Provider',
+                    onPress: () => navigation.replace('Chat', {
+                        bookingId,
+                        receiverId: booking?.provider?.user_id,
+                    }),
+                }]
+            );
+        } catch (err) {
+            Alert.alert('Error', err.response?.data?.error || err.message);
+            setUpiStep('opened');
         }
+    };
+
+    // ── Cash on Delivery ──────────────────────────────────────
+    const handleCOD = async () => {
         setPaying(true);
         try {
-            const { data: orderData } = await api.post('/payments/order', { booking_id: bookingId });
-
-            const options = {
-                description: `Payment for ${booking.service_type}`,
-                image: 'https://i.imgur.com/7k12EPD.png',
-                currency: orderData.currency,
-                key: orderData.key_id,
-                amount: orderData.amount,
-                order_id: orderData.order_id,
-                name: 'Local Services',
-                prefill: { email: user.email || '', contact: user.phone || '', name: user.name },
-                theme: { color: '#6C63FF' },
-            };
-
-            const paymentData = await RazorpayCheckout.open(options);
-
-            await api.post('/payments/verify', {
-                razorpay_order_id: paymentData.razorpay_order_id,
-                razorpay_payment_id: paymentData.razorpay_payment_id,
-                razorpay_signature: paymentData.razorpay_signature,
-                booking_id: bookingId,
-            });
-
-            Alert.alert('Payment Successful! ✅', 'Your booking is confirmed.', [
-                { text: 'Chat with Provider', onPress: () => navigation.replace('Chat', { bookingId }) },
-            ]);
+            await api.post('/payments/cod', { booking_id: bookingId });
+            Alert.alert(
+                'Booking Confirmed! 🎉',
+                'Pay cash to the provider when they arrive.',
+                [{
+                    text: 'Chat with Provider',
+                    onPress: () => navigation.replace('Chat', {
+                        bookingId,
+                        receiverId: booking?.provider?.user_id,
+                    }),
+                }]
+            );
         } catch (err) {
-            if (err?.code) {
-                Alert.alert('Payment Cancelled', 'You cancelled the payment.');
-            } else {
-                Alert.alert('Payment Failed', err.response?.data?.error || err.message);
-            }
+            Alert.alert('Error', err.response?.data?.error || err.message);
         } finally {
             setPaying(false);
         }
@@ -93,68 +111,110 @@ export default function PaymentScreen({ route, navigation }) {
 
     return (
         <ScrollView contentContainerStyle={styles.container}>
-            <View style={styles.card}>
+            {/* Booking Summary */}
+            <Animated.View style={[styles.card, { opacity: cardFade, transform: [{ translateY: cardSlide }] }]}>
                 <Text style={styles.cardTitle}>Booking Summary</Text>
                 <Row label="Service" value={booking?.service_type} />
-                <Row label="Provider" value={booking?.provider?.user?.name} />
+                <Row label="Provider" value={booking?.provider?.user?.name || booking?.provider?.users?.name} />
                 <Row label="Scheduled" value={new Date(booking?.scheduled_at).toLocaleString('en-IN')} />
                 <Row label="Duration" value={`${booking?.duration_hours} hour(s)`} />
                 <Row label="Address" value={booking?.address} />
                 <View style={styles.divider} />
                 <Row label="Total Amount" value={`₹${booking?.total_amount}`} highlight />
                 <Row label="Status" value={booking?.is_paid ? '✅ Paid' : '⏳ Pending'} />
-            </View>
+            </Animated.View>
 
-            {/* Payment Method Selector */}
+            {/* Payment pending + booking accepted */}
             {!booking?.is_paid && booking?.status === 'accepted' && (
                 <>
-                    <Text style={styles.methodTitle}>Choose Payment Method</Text>
-                    <View style={styles.methodRow}>
-                        <TouchableOpacity
-                            style={[styles.methodCard, method === 'cod' && styles.methodActive]}
-                            onPress={() => setMethod('cod')}
-                        >
-                            <Text style={styles.methodIcon}>💵</Text>
-                            <Text style={[styles.methodLabel, method === 'cod' && styles.methodLabelActive]}>Cash on Delivery</Text>
-                            <Text style={styles.methodSub}>Pay when provider arrives</Text>
-                            <Text style={styles.methodFree}>FREE ✓</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.methodCard, method === 'online' && styles.methodActive]}
-                            onPress={() => setMethod('online')}
-                        >
-                            <Text style={styles.methodIcon}>💳</Text>
-                            <Text style={[styles.methodLabel, method === 'online' && styles.methodLabelActive]}>Pay Online</Text>
-                            <Text style={styles.methodSub}>Razorpay (Test Mode)</Text>
-                            <Text style={styles.methodFree}>FREE in test</Text>
-                        </TouchableOpacity>
-                    </View>
+                    {/* Method selector — only show if not yet in UPI flow */}
+                    {upiStep === 'idle' && (
+                        <>
+                            <Text style={styles.methodTitle}>Choose Payment Method</Text>
+                            <View style={styles.methodRow}>
+                                {/* UPI Card */}
+                                <TouchableOpacity
+                                    style={[styles.methodCard, method === 'upi' && styles.methodActive]}
+                                    onPress={() => setMethod('upi')}
+                                >
+                                    <Text style={styles.methodIcon}>📱</Text>
+                                    <Text style={[styles.methodLabel, method === 'upi' && styles.methodLabelActive]}>
+                                        Pay via UPI
+                                    </Text>
+                                    <Text style={styles.methodSub}>GPay · PhonePe · Paytm · BHIM</Text>
+                                    <Text style={styles.methodFree}>FREE ✓ Zero fees</Text>
+                                </TouchableOpacity>
 
-                    <TouchableOpacity
-                        style={styles.payBtn}
-                        onPress={method === 'cod' ? handleCOD : handleOnlinePay}
-                        disabled={paying}
-                    >
-                        {paying
-                            ? <ActivityIndicator color="#fff" />
-                            : <Text style={styles.payBtnText}>
-                                {method === 'cod'
-                                    ? `Confirm Booking (Pay ₹${booking?.total_amount} on arrival)`
-                                    : `Pay ₹${booking?.total_amount} Online`}
-                            </Text>}
-                    </TouchableOpacity>
+                                {/* COD Card */}
+                                <TouchableOpacity
+                                    style={[styles.methodCard, method === 'cod' && styles.methodActive]}
+                                    onPress={() => setMethod('cod')}
+                                >
+                                    <Text style={styles.methodIcon}>💵</Text>
+                                    <Text style={[styles.methodLabel, method === 'cod' && styles.methodLabelActive]}>
+                                        Cash on Delivery
+                                    </Text>
+                                    <Text style={styles.methodSub}>Pay when provider arrives</Text>
+                                    <Text style={styles.methodFree}>FREE ✓</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <TouchableOpacity
+                                style={styles.payBtn}
+                                onPress={method === 'upi' ? handleUPI : handleCOD}
+                                disabled={paying}
+                            >
+                                {paying
+                                    ? <ActivityIndicator color="#fff" />
+                                    : <Text style={styles.payBtnText}>
+                                        {method === 'upi'
+                                            ? `Open UPI App — Pay ₹${booking?.total_amount}`
+                                            : `Confirm (Pay ₹${booking?.total_amount} on arrival)`}
+                                    </Text>}
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    {/* After UPI app opened — confirm step */}
+                    {upiStep === 'opened' && (
+                        <View style={styles.confirmBox}>
+                            <Text style={styles.confirmTitle}>Did you complete the payment?</Text>
+                            <Text style={styles.confirmSub}>
+                                Enter your UPI Transaction ID (optional but helpful for provider)
+                            </Text>
+                            <TextInput
+                                style={styles.txnInput}
+                                placeholder="UPI Transaction ID (e.g. 426789234567)"
+                                value={transactionRef}
+                                onChangeText={setTransactionRef}
+                                keyboardType="default"
+                            />
+                            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmUPI}>
+                                {upiStep === 'confirming'
+                                    ? <ActivityIndicator color="#fff" />
+                                    : <Text style={styles.confirmBtnText}>✅ Yes, I've Paid</Text>}
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.retryBtn} onPress={handleUPI}>
+                                <Text style={styles.retryBtnText}>↩ Retry UPI Payment</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </>
             )}
 
+            {/* Waiting for acceptance */}
             {booking?.status === 'pending' && (
                 <View style={styles.infoBox}>
                     <Text style={styles.infoText}>⏳ Waiting for provider to accept your booking before payment.</Text>
                 </View>
             )}
 
+            {/* Already paid — leave review */}
             {booking?.is_paid && (
-                <TouchableOpacity style={styles.reviewBtn}
-                    onPress={() => navigation.navigate('Review', { bookingId, providerId: booking.provider_id })}>
+                <TouchableOpacity
+                    style={styles.reviewBtn}
+                    onPress={() => navigation.navigate('Review', { bookingId, providerId: booking.provider_id })}
+                >
                     <Text style={styles.reviewBtnText}>Leave a Review ⭐</Text>
                 </TouchableOpacity>
             )}
@@ -180,7 +240,7 @@ const styles = StyleSheet.create({
     divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 8 },
     methodTitle: { fontSize: 15, fontWeight: '700', color: '#1F2937', marginBottom: 12 },
     methodRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-    methodCard: { flex: 1, backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center', borderWidth: 2, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
+    methodCard: { flex: 1, backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center', borderWidth: 2, borderColor: '#E5E7EB', elevation: 1 },
     methodActive: { borderColor: '#6C63FF', backgroundColor: '#EDE9FE' },
     methodIcon: { fontSize: 28, marginBottom: 6 },
     methodLabel: { fontWeight: '700', fontSize: 13, color: '#1F2937', textAlign: 'center' },
@@ -193,4 +253,13 @@ const styles = StyleSheet.create({
     infoText: { color: '#92400E', fontSize: 13, textAlign: 'center' },
     reviewBtn: { marginTop: 12, backgroundColor: '#10B981', borderRadius: 14, padding: 16, alignItems: 'center' },
     reviewBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    // UPI confirm step
+    confirmBox: { backgroundColor: '#fff', borderRadius: 16, padding: 20, elevation: 2, alignItems: 'center' },
+    confirmTitle: { fontSize: 18, fontWeight: '800', color: '#1F2937', textAlign: 'center', marginBottom: 8 },
+    confirmSub: { fontSize: 13, color: '#6B7280', textAlign: 'center', marginBottom: 16 },
+    txnInput: { width: '100%', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 14, fontSize: 14, backgroundColor: '#F9FAFB', marginBottom: 16 },
+    confirmBtn: { backgroundColor: '#10B981', borderRadius: 12, paddingVertical: 16, paddingHorizontal: 32, width: '100%', alignItems: 'center', marginBottom: 10 },
+    confirmBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+    retryBtn: { paddingVertical: 10 },
+    retryBtnText: { color: '#6C63FF', fontWeight: '600', fontSize: 14 },
 });

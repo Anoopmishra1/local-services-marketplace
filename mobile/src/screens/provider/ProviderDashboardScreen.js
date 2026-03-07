@@ -1,16 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-    View, Text, ScrollView, StyleSheet, FlatList,
-    TouchableOpacity, ActivityIndicator, Alert, Image,
+    View, Text, ScrollView, StyleSheet,
+    TouchableOpacity, ActivityIndicator, Animated,
 } from 'react-native';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
+
+const STATUS_COLOR = {
+    pending: '#F59E0B',
+    accepted: '#6C63FF',
+    in_progress: '#3B82F6',
+    completed: '#10B981',
+    rejected: '#EF4444',
+    cancelled: '#9CA3AF',
+};
 
 export default function ProviderDashboardScreen({ navigation }) {
     const { user, logout } = useAuthStore();
     const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, earned: 0 });
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // Animations
+    const headerFade = useRef(new Animated.Value(0)).current;
+    const headerSlide = useRef(new Animated.Value(-40)).current;
+    const statAnims = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
+    const statScales = useRef([0, 1, 2, 3].map(() => new Animated.Value(0.8))).current;
+    const bookingAnims = useRef([0, 1, 2, 3, 4].map(() => new Animated.Value(0))).current;
+    const bookingSlides = useRef([0, 1, 2, 3, 4].map(() => new Animated.Value(30))).current;
 
     useEffect(() => {
         Promise.all([
@@ -28,12 +45,45 @@ export default function ProviderDashboardScreen({ navigation }) {
         }).finally(() => setLoading(false));
     }, []);
 
+    useEffect(() => {
+        if (!loading) {
+            // Header flies in
+            Animated.parallel([
+                Animated.timing(headerFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+                Animated.timing(headerSlide, { toValue: 0, duration: 450, useNativeDriver: true }),
+            ]).start();
+
+            // Stat cards pop in with stagger
+            Animated.stagger(80, statAnims.map((anim, i) =>
+                Animated.parallel([
+                    Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: true }),
+                    Animated.spring(statScales[i], { toValue: 1, friction: 5, useNativeDriver: true }),
+                ])
+            )).start();
+
+            // Booking cards slide up with stagger
+            Animated.stagger(70, bookingAnims.map((anim, i) =>
+                Animated.parallel([
+                    Animated.timing(anim, { toValue: 1, duration: 350, delay: 300, useNativeDriver: true }),
+                    Animated.timing(bookingSlides[i], { toValue: 0, duration: 320, delay: 300, useNativeDriver: true }),
+                ])
+            )).start();
+        }
+    }, [loading]);
+
     if (loading) return <ActivityIndicator size="large" color="#10B981" style={{ flex: 1, marginTop: 100 }} />;
+
+    const statItems = [
+        { label: 'Total', value: stats.total, color: '#6C63FF' },
+        { label: 'Pending', value: stats.pending, color: '#F59E0B' },
+        { label: 'Done', value: stats.completed, color: '#10B981' },
+        { label: 'Earned', value: `₹${stats.earned?.toFixed(0) || 0}`, color: '#EF4444' },
+    ];
 
     return (
         <ScrollView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
+            {/* Animated Header */}
+            <Animated.View style={[styles.header, { opacity: headerFade, transform: [{ translateY: headerSlide }] }]}>
                 <View>
                     <Text style={styles.hi}>Hi, {user?.name?.split(' ')[0]} 👷</Text>
                     <Text style={styles.sub}>Manage your bookings & earnings</Text>
@@ -41,50 +91,37 @@ export default function ProviderDashboardScreen({ navigation }) {
                 <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
                     <Text style={styles.logoutText}>Logout</Text>
                 </TouchableOpacity>
-            </View>
+            </Animated.View>
 
-            {/* Stat Cards */}
+            {/* Staggered Stat Cards */}
             <View style={styles.statsRow}>
-                {[
-                    { label: 'Total', value: stats.total, color: '#6C63FF' },
-                    { label: 'Pending', value: stats.pending, color: '#F59E0B' },
-                    { label: 'Done', value: stats.completed, color: '#10B981' },
-                    { label: 'Earned', value: `₹${stats.earned.toFixed(0)}`, color: '#EF4444' },
-                ].map((s) => (
-                    <View key={s.label} style={[styles.statCard, { borderTopColor: s.color }]}>
+                {statItems.map((s, i) => (
+                    <Animated.View key={s.label} style={[styles.statCard, { borderTopColor: s.color }, { opacity: statAnims[i], transform: [{ scale: statScales[i] }] }]}>
                         <Text style={[styles.statVal, { color: s.color }]}>{s.value}</Text>
                         <Text style={styles.statLabel}>{s.label}</Text>
-                    </View>
+                    </Animated.View>
                 ))}
             </View>
 
-            {/* Recent Bookings */}
+            {/* Animated Recent Bookings */}
             <Text style={styles.sectionTitle}>Recent Bookings</Text>
-            {bookings.map((b) => (
-                <TouchableOpacity key={b.id} style={styles.bookingCard}
-                    onPress={() => navigation.navigate('Bookings')}>
-                    <View>
-                        <Text style={styles.bookingService}>{b.service_type}</Text>
-                        <Text style={styles.bookingCustomer}>{b.customer?.name}</Text>
-                        <Text style={styles.bookingDate}>{new Date(b.scheduled_at).toLocaleDateString('en-IN')}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR[b.status] + '20' }]}>
-                        <Text style={[styles.statusText, { color: STATUS_COLOR[b.status] }]}>{b.status}</Text>
-                    </View>
-                </TouchableOpacity>
+            {bookings.map((b, index) => (
+                <Animated.View key={b.id} style={{ opacity: bookingAnims[index] || new Animated.Value(1), transform: [{ translateY: bookingSlides[index] || new Animated.Value(0) }] }}>
+                    <TouchableOpacity style={styles.bookingCard} onPress={() => navigation.navigate('Bookings')}>
+                        <View>
+                            <Text style={styles.bookingService}>{b.service_type}</Text>
+                            <Text style={styles.bookingCustomer}>{b.customer?.name}</Text>
+                            <Text style={styles.bookingDate}>{new Date(b.scheduled_at).toLocaleDateString('en-IN')}</Text>
+                        </View>
+                        <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR[b.status] + '20' }]}>
+                            <Text style={[styles.statusText, { color: STATUS_COLOR[b.status] }]}>{b.status}</Text>
+                        </View>
+                    </TouchableOpacity>
+                </Animated.View>
             ))}
         </ScrollView>
     );
 }
-
-const STATUS_COLOR = {
-    pending: '#F59E0B',
-    accepted: '#6C63FF',
-    in_progress: '#3B82F6',
-    completed: '#10B981',
-    rejected: '#EF4444',
-    cancelled: '#9CA3AF',
-};
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F9FAFB' },

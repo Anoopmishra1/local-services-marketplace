@@ -35,6 +35,22 @@ router.put('/profile', authMiddleware, async (req, res) => {
     }
 });
 
+// ── GET /api/users/bookings ──────────────────────────────────
+// Shorthand for current authenticated user's bookings
+router.get('/bookings', authMiddleware, async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('bookings')
+            .select(`*, providers(id, user_id, users(name, avatar_url), hourly_rate, rating), categories(name)`)
+            .eq('customer_id', req.user.id)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ── GET /api/users/:id/bookings ──────────────────────────────
 router.get('/:id/bookings', authMiddleware, async (req, res) => {
     try {
@@ -44,7 +60,7 @@ router.get('/:id/bookings', authMiddleware, async (req, res) => {
             .eq('customer_id', req.params.id)
             .order('created_at', { ascending: false });
         if (error) throw error;
-        res.json(data);
+        res.json(data || []);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

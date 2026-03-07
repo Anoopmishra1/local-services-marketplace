@@ -1,10 +1,30 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Animated } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 
 export default function ProfileScreen() {
     const { user, logout } = useAuthStore();
+
+    // Animation values
+    const headerFade = useRef(new Animated.Value(0)).current;
+    const headerScale = useRef(new Animated.Value(0.9)).current;
+    const menuAnims = useRef([0, 1, 2, 3, 4, 5, 6].map(() => new Animated.Value(0))).current;
+    const menuSlides = useRef([0, 1, 2, 3, 4, 5, 6].map(() => new Animated.Value(30))).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(headerFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+            Animated.spring(headerScale, { toValue: 1, friction: 6, useNativeDriver: true }),
+        ]).start();
+
+        Animated.stagger(60, menuAnims.map((anim, i) =>
+            Animated.parallel([
+                Animated.timing(anim, { toValue: 1, duration: 350, delay: 200, useNativeDriver: true }),
+                Animated.timing(menuSlides[i], { toValue: 0, duration: 300, delay: 200, useNativeDriver: true }),
+            ])
+        )).start();
+    }, []);
 
     const handleLogout = () => {
         Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -13,48 +33,58 @@ export default function ProfileScreen() {
         ]);
     };
 
-    const MenuButton = ({ icon, label, onPress, color = '#1F2937' }) => (
-        <TouchableOpacity style={styles.menuItem} onPress={onPress}>
-            <View style={[styles.iconContainer, { backgroundColor: color + '15' }]}>
-                <Icon name={icon} size={20} color={color} />
-            </View>
-            <Text style={styles.menuLabel}>{label}</Text>
-            <Icon name="chevron-right" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
-    );
+    const MenuButton = ({ icon, label, onPress, color = '#1F2937', animIndex }) => {
+        const scaleAnim = useRef(new Animated.Value(1)).current;
+        return (
+            <Animated.View style={{ opacity: menuAnims[animIndex], transform: [{ translateX: menuSlides[animIndex] }, { scale: scaleAnim }] }}>
+                <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={onPress}
+                    onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start()}
+                    onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start()}
+                >
+                    <View style={[styles.iconContainer, { backgroundColor: color + '15' }]}>
+                        <Icon name={icon} size={20} color={color} />
+                    </View>
+                    <Text style={styles.menuLabel}>{label}</Text>
+                    <Icon name="chevron-right" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+            </Animated.View>
+        );
+    };
 
     return (
         <ScrollView style={styles.container}>
-            <View style={styles.header}>
-                <Image
-                    source={{ uri: user?.avatar_url || 'https://i.pravatar.cc/100' }}
-                    style={styles.avatar}
-                />
+            {/* Animated Header */}
+            <Animated.View style={[styles.header, { opacity: headerFade, transform: [{ scale: headerScale }] }]}>
+                <Image source={{ uri: user?.avatar_url || 'https://i.pravatar.cc/100' }} style={styles.avatar} />
                 <Text style={styles.name}>{user?.name}</Text>
                 <Text style={styles.email}>{user?.email || user?.phone}</Text>
                 <TouchableOpacity style={styles.editBtn}>
                     <Text style={styles.editBtnText}>Edit Profile</Text>
                 </TouchableOpacity>
-            </View>
+            </Animated.View>
 
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Account Settings</Text>
-                <MenuButton icon="bell-outline" label="Notifications" onPress={() => { }} />
-                <MenuButton icon="shield-check-outline" label="Privacy & Security" onPress={() => { }} />
-                <MenuButton icon="map-marker-outline" label="Saved Addresses" onPress={() => { }} />
+                <MenuButton animIndex={0} icon="bell-outline" label="Notifications" onPress={() => { }} />
+                <MenuButton animIndex={1} icon="shield-check-outline" label="Privacy & Security" onPress={() => { }} />
+                <MenuButton animIndex={2} icon="map-marker-outline" label="Saved Addresses" onPress={() => { }} />
             </View>
 
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Support</Text>
-                <MenuButton icon="help-circle-outline" label="Help Center" onPress={() => { }} />
-                <MenuButton icon="file-document-outline" label="Terms of Service" onPress={() => { }} />
-                <MenuButton icon="star-outline" label="Rate the App" onPress={() => { }} />
+                <MenuButton animIndex={3} icon="help-circle-outline" label="Help Center" onPress={() => { }} />
+                <MenuButton animIndex={4} icon="file-document-outline" label="Terms of Service" onPress={() => { }} />
+                <MenuButton animIndex={5} icon="star-outline" label="Rate the App" onPress={() => { }} />
             </View>
 
-            <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-                <Icon name="logout" size={20} color="#EF4444" />
-                <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
+            <Animated.View style={{ opacity: menuAnims[6], transform: [{ translateY: menuSlides[6] }] }}>
+                <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+                    <Icon name="logout" size={20} color="#EF4444" />
+                    <Text style={styles.logoutText}>Logout</Text>
+                </TouchableOpacity>
+            </Animated.View>
 
             <Text style={styles.versionText}>Version 1.0.0</Text>
         </ScrollView>
