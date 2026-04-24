@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --dns-result-order=ipv4first ./node_modules/nodemon/bin/nodemon.js src/index.js"
+    "dev": "nodemon --exec \"node --dns-result-order=ipv4first\" src/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

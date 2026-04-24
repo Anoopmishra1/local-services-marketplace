@@ -17,6 +17,7 @@ mobile/web-build/
 
 # Build outputs
 backend/dist/
+admin/dist/
 build/
 
 # OS files

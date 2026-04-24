@@ -1,8 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const adminAxios = axios.create({ baseURL: API, headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } });
+import api from '../services/api';
 
 const StatCard = ({ icon, label, value, color }) => (
     <div className={`bg-white rounded-2xl p-6 shadow-sm border-t-4 ${color}`}>
@@ -20,7 +17,7 @@ export default function Dashboard() {
     const [stats, setStats] = useState(null);
 
     useEffect(() => {
-        adminAxios.get('/admin/dashboard').then(({ data }) => setStats(data)).catch(console.error);
+        api.get('/admin/dashboard').then(({ data }) => setStats(data)).catch(console.error);
     }, []);
 
     return (

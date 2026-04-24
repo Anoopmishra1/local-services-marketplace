@@ -1,8 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-const api = axios.create({ baseURL: API, headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } });
+import api from '../services/api';
 
 const STATUS_COLOR = {
     open: 'bg-red-100 text-red-700',
